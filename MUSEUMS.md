@@ -1,11 +1,11 @@
 # Museums
 
-## Where Lumina's paintings live
+## Where Lumina's art lives
 
-All seven came from the **Art Institute of Chicago**. It holds the El Greco, the Inness, the
-Dupré, an impression of Hokusai's wave, and the rest, and it put them online for anyone to use,
-free and forever. If you go to one place because of this project, go there. The Inness moonrise
-in person is worth the flight.
+All seven came from the **Art Institute of Chicago**: the El Greco and the Inness, a Dupré
+drawing, a Munch etching, an impression of Hokusai's wave, and the rest. The museum put them
+online for anyone to use, free and forever. If you go to one place because of this project, go
+there. The Inness moonrise in person is worth the flight.
 
 Two of the seven are by **Edvard Munch**. For him, the **MUNCH museum in Oslo** is a pilgrimage.
 A whole building of one restless mind.
