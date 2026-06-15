@@ -1,44 +1,58 @@
 # Lumina
 
-A live **data-art screensaver**. Your real data — files moving between drives, to a local
-vault, up to the cloud — streams as comets of light across a slow rotation of public-domain
-masterworks. Each comet picks up the exact pigment of the painting beneath it, so the same
-data glows gold across Hokusai's sky and deep indigo through the shadow of the wave.
+*A screensaver that turns the quiet work of your machines into light moving across old paintings.*
 
-It runs on a plain web page. No build step, no dependencies, no account. Point it at a small
-JSON feed and it animates; with no feed it runs a built-in demo.
+Files travel all the time. A photo copies to a backup drive. A folder climbs to the cloud at
+3am while you sleep. You never see any of it. Lumina makes it visible. Every transfer becomes a
+small comet of light, and the light crosses a slow rotation of public-domain masterworks,
+picking up the color of whatever paint it floats over. The same backup glows gold across
+Hokusai's sky and deep blue through the shadow of the wave.
 
-![Lumina over Hokusai's Great Wave](screenshot.png)
+It is one HTML file. No build, no install, no account. Open it and watch.
+
+![Lumina, live data over Hokusai's Great Wave](screenshot.png)
+
+## Why this exists
+
+Data has a reputation for being cold. Rows, bytes, throughput, the language of spreadsheets.
+But watch a drive copy 400 gigabytes some night and tell me it isn't a kind of weather. Things
+move. They pool and rush and go quiet. There is labor in it, the patient unglamorous labor of
+keeping something safe, and labor has always been worth looking at.
+
+Lumina takes that hidden movement and hangs it inside paintings that have been looking back at
+us for centuries. The point is simple. The work your machines do for you is already beautiful.
+This just gives it somewhere beautiful to happen.
 
 ## Run it
 
 ```bash
-./serve.sh            # opens http://localhost:8787/  (built-in demo data)
-./serve.sh --demo     # same, but with an animated demo feed (numbers wander)
+./serve.sh            # opens http://localhost:8787 with built-in demo data
+./serve.sh --demo     # same, but the numbers wander on a timer
 ```
 
-Click the page for fullscreen. That's the whole thing.
+Click the page to go fullscreen. That is the whole interface.
 
 ## The seven paintings
 
-A deliberately dark, single-light-source set — nocturnes, storms, moonrises — so the data is
-the only thing truly alight. Each one moves the data differently:
+Chosen for darkness and motion, so the data is the only thing truly alight. Each one moves your
+data its own way.
 
-| Painting | Artist (year) | How the data moves |
+| Painting | Artist, year | How the light moves |
 |---|---|---|
-| Under the Wave off Kanagawa | Hokusai (1831) | **curl** — comets surge in a high arc, like the wave |
-| Nocturne: Blue and Gold | Whistler (1872) | **drift** — slow horizontal shimmer, like lamplight on water |
-| Moonlight, Night in St Cloud | Munch (1893) | **beam** — cool, vertical, moonlit |
-| Ships at Sea During Storm | Jules Dupré (1844) | **storm** — fast, turbulent spray |
-| Moonrise | George Inness (1891) | **rise** — gentle, sparse, ascending |
-| The Assumption of the Virgin | El Greco (1577) | **ascend** — light rises heavenward |
-| The Girl by the Window | Munch (1893) | **drift** — quiet, inward |
+| Under the Wave off Kanagawa | Hokusai, 1831 | surges in a high curl, like the wave |
+| Nocturne: Blue and Gold | Whistler, 1872 | drifts low and slow, lamplight on water |
+| Moonlight, Night in St Cloud | Munch, 1893 | cool and vertical, moonlit |
+| Ships at Sea During Storm | Jules Dupré, 1844 | fast, tossed, like spray |
+| Moonrise | George Inness, 1891 | gentle and sparse, rising |
+| The Assumption of the Virgin | El Greco, 1577 | climbs upward, heavenward |
+| The Girl by the Window | Munch, 1893 | quiet, turned inward |
 
-Every painting is **public domain**. See [CREDITS.md](CREDITS.md) for sources and provenance.
+Every one is public domain. See [CREDITS.md](CREDITS.md) for sources, and [MUSEUMS.md](MUSEUMS.md)
+for where to stand in front of them.
 
-## Feeding it your own data
+## Feed it your own data
 
-The page polls `state.json` every 1.5s. Give it this shape:
+The page reads a small `state.json` every couple of seconds. Hand it this shape and it animates:
 
 ```json
 {
@@ -46,31 +60,32 @@ The page polls `state.json` every 1.5s. Give it this shape:
   "totalSpeed": 90,
   "drives": [
     {"name":"CAM-A","role":"source","kind":"camera-sony","label":"F-01","clips":42,"total":1000000000000,"used":520000000000},
-    {"name":"DRIVE-1","role":"source","kind":"data","label":"D-01","total":500000000000,"used":460000000000},
     {"name":"ARCHIVE","role":"archive","kind":"archive","total":16000000000000,"used":820000000000}
   ],
   "cloud": {"name":"Cloud","used":1700000000000,"total":22000000000000},
   "edges": [
-    {"from":"CAM-A","to":"cloud","kind":"footage","pct":63,"speed":47},
-    {"from":"DRIVE-1","to":"vault","kind":"data","pct":0,"speed":0}
+    {"from":"CAM-A","to":"cloud","kind":"footage","pct":63,"speed":47}
   ]
 }
 ```
 
-- `drives[].role`: `source` (left), `archive` (the center vault), shown as labeled nodes.
-- `edges[]`: each active transfer becomes a stream of comets. `to` is `"vault"` or `"cloud"`.
-- `kind`: `footage` comets run warm, `data` comets run cool.
-- `label`: the short name shown on each node (e.g. `F-01`).
-
-Write that file from anything — a backup script, a `df` loop, an rsync wrapper. Whatever
-produces it, Lumina just reads it.
+Each `edge` is an active transfer and becomes a stream of comets. `to` is `"vault"` or `"cloud"`.
+`kind: footage` runs warm, `kind: data` runs cool. Write that file from anything. A backup
+script, a `df` loop, an rsync wrapper. Lumina does not care where it comes from. It just reads.
 
 ## Make it yours
 
-Open `index.html` and edit the `ART` array near the top — swap in your own public-domain
-images (drop the JPGs in `art/`) and tune each painting's motion: `b` brightness, `v`
-vignette, `sp` speed, `wob` wobble, `arc` path lift, `gh` trail length, `flow` style.
+Open `index.html` and edit the `ART` list near the top. Drop your own public-domain images into
+`art/`, then tune each painting: `b` brightness, `v` vignette, `sp` speed, `arc` how high the
+light arcs, `flow` its character. The whole thing is meant to be taken apart.
+
+## Read more
+
+- [Poems](POETRY.md), on why a moving file might be art.
+- [Museums](MUSEUMS.md), where these paintings live and where to find a thousand more you can use.
+- [Credits](CREDITS.md), the provenance of every image.
 
 ## License
 
-Code: [MIT](LICENSE). Paintings: public domain (see CREDITS.md). Use it however you like.
+The code is [MIT](LICENSE). The paintings are public domain. Take it, fork it, put your own life
+on the wall.
