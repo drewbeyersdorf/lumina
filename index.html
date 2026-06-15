@@ -29,7 +29,8 @@ const DEF={b:.8,v:.45,sp:1,arc:1};let CFG=DEF;
 const C=document.getElementById('c'),X=C.getContext('2d',{alpha:false});
 let W,H,DPR;
 function size(){DPR=Math.min(1.25,devicePixelRatio||1);W=C.width=Math.round(innerWidth*DPR);H=C.height=Math.round(innerHeight*DPR);buildVig();}
-const human=b=>{b=+b||0;const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++}return b.toFixed(i?1:0)+u[i]};
+// decimal units (matches what drives are labelled with: 1 TB, 16 TB, etc.)
+const human=b=>{b=+b||0;const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1000&&i<4){b/=1000;i++}return b.toFixed(i>=3?1:0)+' '+u[i]};
 
 // ── pre-rendered sprites (drawn with drawImage on the GPU; no per-frame gradients/shadows) ──
 function glow(rgb,sz){const c=document.createElement('canvas');c.width=c.height=sz;const x=c.getContext('2d');
@@ -124,19 +125,22 @@ function star(n,now){const R=(n.role==='source'?15:20)*DPR*(1+n.pulse*0.5);
   X.lineWidth=1.3*DPR;X.strokeStyle='rgba(243,217,160,0.55)';X.beginPath();X.arc(n.x,n.y,R,0,Math.PI*2);X.stroke();
   X.fillStyle='rgba(255,250,235,0.65)';X.beginPath();X.arc(n.x,n.y,2*DPR,0,Math.PI*2);X.fill();
   if(n.pulse>0.01)n.pulse*=0.92;else n.pulse=0;}
-function label(n){const d=n.d||{};let L1,L2,L3,ac='#9fc6ff';
-  if(n.role==='source'){const foot=d.kind==='camera-sony';ac=foot?'#bfe9ff':'#ffe1a8';L1=d.label||'—';L2=d.name||'';
-    const e=state.edges.find(x=>x.from===d.name);L3=e?(e.kind==='footage'?`COPYING ${e.pct}% · ${e.speed} MB/s`:'organizing → vault'):(foot?`${d.clips||0} clips`:'idle');}
-  else if(n.role==='vault'){L1='VAULT';L2=d.name||'Archive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;ac='#cdb8ff';}
-  else{L1='CLOUD';L2='Google Drive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;ac='#a9f0cf';}
-  const tx=n.x+24*DPR;X.textBaseline='middle';
-  X.font=`700 ${14*DPR}px Georgia,serif`;const w1=X.measureText(L1).width;
-  X.font=`${10.5*DPR}px ui-monospace,monospace`;const pw=Math.max(w1,X.measureText(L2).width,X.measureText(L3).width)+16*DPR;
-  X.fillStyle='rgba(8,9,16,0.42)';rr(tx-8*DPR,n.y-24*DPR,pw,48*DPR,7*DPR);X.fill();
-  X.shadowColor='#000';X.shadowBlur=5*DPR;
-  X.font=`700 ${14*DPR}px Georgia,serif`;X.fillStyle='#f3d9a0';X.fillText(L1,tx,n.y-13*DPR);
-  X.font=`${10.5*DPR}px ui-monospace,monospace`;X.fillStyle='#e9f0ff';X.fillText(L2,tx,n.y+1*DPR);
-  X.fillStyle=ac;X.fillText(L3,tx,n.y+14*DPR);X.shadowBlur=0;}
+function label(n){const d=n.d||{};let ac='#9fc6ff',rows;
+  const sz=`${human(d.used)} / ${human(d.total)}`,free=`${human((d.total||0)-(d.used||0))} free`;
+  if(n.role==='source'){const foot=d.kind==='camera-sony';ac=foot?'#bfe9ff':'#ffe1a8';
+    const e=state.edges.find(x=>x.from===d.name);
+    const st=e?(e.kind==='footage'?`COPYING ${e.pct}% · ${e.speed} MB/s`:'organizing → vault'):(foot?`${d.clips||0} clips`:'ready');
+    rows=[[d.label||'—','#f3d9a0',1],[d.name||'','#9fb3d6',0],[sz,'#e9f0ff',0],[st,ac,0]];}
+  else if(n.role==='vault'){ac='#cdb8ff';rows=[['VAULT','#f3d9a0',1],[d.name||'Archive','#9fb3d6',0],[sz,'#e9f0ff',0],[free,ac,0]];}
+  else{ac='#a9f0cf';rows=[['CLOUD','#f3d9a0',1],['Google Drive','#9fb3d6',0],[sz,'#e9f0ff',0],[free,ac,0]];}
+  const tx=n.x+24*DPR,lh=13.5*DPR;X.textBaseline='middle';
+  X.font=`700 ${13*DPR}px Georgia,serif`;let pw=X.measureText(rows[0][0]).width;
+  X.font=`${10*DPR}px ui-monospace,monospace`;for(let i=1;i<rows.length;i++)pw=Math.max(pw,X.measureText(rows[i][0]).width);
+  pw+=16*DPR;const ph=rows.length*lh+8*DPR,py=n.y-ph/2;
+  X.fillStyle='rgba(8,9,16,0.46)';rr(tx-8*DPR,py,pw,ph,7*DPR);X.fill();
+  X.shadowColor='#000';X.shadowBlur=5*DPR;let y=py+lh/2+4*DPR;
+  for(const r of rows){X.font=r[2]?`700 ${13*DPR}px Georgia,serif`:`${10*DPR}px ui-monospace,monospace`;X.fillStyle=r[1];X.fillText(r[0],tx,y);y+=lh;}
+  X.shadowBlur=0;}
 function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.arcTo(x+w,y,x+w,y+h,r);X.arcTo(x+w,y+h,x,y+h,r);X.arcTo(x,y+h,x,y,r);X.arcTo(x,y,x+w,y,r);X.closePath();}
 function title(now){const a=((fade<1&&fade>0.5)?arts[nxt]:arts[cur])||arts[cur];if(!a)return;
   X.shadowColor='#000';X.shadowBlur=9*DPR;X.textBaseline='alphabetic';
