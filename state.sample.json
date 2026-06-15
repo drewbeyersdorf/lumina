@@ -1,0 +1,16 @@
+{
+  "ts": "demo",
+  "totalSpeed": 90,
+  "drives": [
+    {"name":"CAM-A","role":"source","kind":"camera-sony","label":"F-01","clips":42,"total":1000000000000,"used":520000000000},
+    {"name":"CAM-B","role":"source","kind":"camera-sony","label":"F-02","clips":17,"total":256000000000,"used":80000000000},
+    {"name":"DRIVE-1","role":"source","kind":"data","label":"D-01","total":500000000000,"used":460000000000},
+    {"name":"ARCHIVE","role":"archive","kind":"archive","total":16000000000000,"used":820000000000}
+  ],
+  "cloud": {"name":"Cloud","used":1700000000000,"total":22000000000000},
+  "edges": [
+    {"from":"CAM-A","to":"cloud","kind":"footage","pct":63,"speed":47},
+    {"from":"CAM-A","to":"vault","kind":"footage","pct":58,"speed":61},
+    {"from":"DRIVE-1","to":"vault","kind":"data","pct":0,"speed":0}
+  ]
+}

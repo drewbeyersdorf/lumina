@@ -1,0 +1,5 @@
+state.json
+card-registry.json
+*.local
+.DS_Store
+state.json.tmp
