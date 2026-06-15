@@ -6,244 +6,165 @@
 <title>Fleet · Data-Art Screensaver</title>
 <style>
   html,body{margin:0;height:100%;background:#05060a;overflow:hidden;cursor:none}
-  #c{position:fixed;inset:0;display:block}
-  #hint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:5;
-    font:11px/1.4 ui-monospace,monospace;color:#9fb3d6;opacity:.0;transition:opacity .6s;
-    letter-spacing:1px;text-shadow:0 0 8px #000;pointer-events:none}
-  body:hover #hint{opacity:.55}
-  #conn{position:fixed;right:16px;top:14px;z-index:5;font:10px ui-monospace,monospace;
+  #c{position:fixed;inset:0;display:block;width:100%;height:100%}
+  #conn{position:fixed;right:16px;top:13px;z-index:5;font:10px ui-monospace,monospace;
     letter-spacing:2px;color:#6df;opacity:.5;text-shadow:0 0 8px #000}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="conn">CONNECTING…</div>
-<div id="hint">FLEET · live data woven into the masters — click for fullscreen · ⌘R reloads</div>
 <script>
-// per-image: b=brightness (art apparency), v=vignette, sp=packet speed, wob=wobble px,
-// arc=path-lift mult, gh=trail length, flow= the painting's signature data motion
+// ── public-domain paintings; per image: b=brightness v=vignette sp=speed arc=path-lift flow=motion
 const ART=[
- {f:'great-wave.jpg',t:'Under the Wave off Kanagawa',a:'Hokusai · 1831',cfg:{b:.78,v:.40,sp:1.3,wob:10,arc:1.7,gh:13,flow:'curl'}},
- {f:'whistler-nocturne.jpg',t:'Nocturne: Blue and Gold',a:'Whistler · 1872',cfg:{b:.86,v:.46,sp:.62,wob:3,arc:.30,gh:17,flow:'drift'}},
- {f:'munch-stcloud.jpg',t:'Moonlight, Night in St Cloud',a:'Munch · 1893',cfg:{b:.80,v:.46,sp:.8,wob:4,arc:.9,gh:12,flow:'beam'}},
- {f:'ships-storm.jpg',t:'Ships at Sea During Storm',a:'Jules Dupré · 1844',cfg:{b:.82,v:.44,sp:1.6,wob:16,arc:1.1,gh:9,flow:'storm'}},
- {f:'moonrise.jpg',t:'Moonrise',a:'George Inness · 1891',cfg:{b:.90,v:.42,sp:.55,wob:6,arc:1.0,gh:8,flow:'rise'}},
- {f:'elgreco-assumption.jpg',t:'The Assumption of the Virgin',a:'El Greco · 1577',cfg:{b:.76,v:.46,sp:.95,wob:5,arc:2.0,gh:12,flow:'ascend'}},
- {f:'girl-by-window.jpg',t:'The Girl by the Window',a:'Edvard Munch · 1893',cfg:{b:.86,v:.42,sp:.75,wob:4,arc:.6,gh:11,flow:'drift'}},
+ {f:'great-wave.jpg',t:'Under the Wave off Kanagawa',a:'Hokusai · 1831',cfg:{b:.80,v:.40,sp:1.15,arc:1.6,flow:'curl'}},
+ {f:'whistler-nocturne.jpg',t:'Nocturne: Blue and Gold',a:'Whistler · 1872',cfg:{b:.88,v:.46,sp:.6,arc:.3,flow:'drift'}},
+ {f:'munch-stcloud.jpg',t:'Moonlight, Night in St Cloud',a:'Munch · 1893',cfg:{b:.82,v:.46,sp:.75,arc:.9,flow:'beam'}},
+ {f:'ships-storm.jpg',t:'Ships at Sea During Storm',a:'Jules Dupré · 1844',cfg:{b:.84,v:.44,sp:1.3,arc:1.0,flow:'storm'}},
+ {f:'moonrise.jpg',t:'Moonrise',a:'George Inness · 1891',cfg:{b:.92,v:.42,sp:.5,arc:1.0,flow:'rise'}},
+ {f:'elgreco-assumption.jpg',t:'The Assumption of the Virgin',a:'El Greco · 1577',cfg:{b:.78,v:.46,sp:.85,arc:1.9,flow:'ascend'}},
+ {f:'girl-by-window.jpg',t:'The Girl by the Window',a:'Edvard Munch · 1893',cfg:{b:.88,v:.42,sp:.7,arc:.6,flow:'drift'}},
 ];
-const DEF={b:.7,v:.46,sp:1,wob:6,arc:1,gh:12,flow:'curl'};
-let CUR_CFG=DEF;
-const C=document.getElementById('c'),X=C.getContext('2d');
+const DEF={b:.8,v:.45,sp:1,arc:1,flow:'curl'};let CFG=DEF;
+const C=document.getElementById('c'),X=C.getContext('2d',{alpha:false});
 let W,H,DPR;
-function size(){DPR=Math.min(2,devicePixelRatio||1);W=C.width=innerWidth*DPR;H=C.height=innerHeight*DPR;
-  C.style.width=innerWidth+'px';C.style.height=innerHeight+'px';buildVignette();sizeBloom();}
-const GOLD='#f3d9a0';
+function size(){DPR=Math.min(1.25,devicePixelRatio||1);W=C.width=Math.round(innerWidth*DPR);H=C.height=Math.round(innerHeight*DPR);buildVig();}
 const human=b=>{b=+b||0;const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++}return b.toFixed(i?1:0)+u[i]};
 
-// ---- paintings: load, pre-darken, build color-sample buffer ----
-const arts=ART.map(m=>({...m,img:new Image(),ready:false,dark:null,samp:null,sw:0,sh:0}));
-arts.forEach(o=>{o.img.onload=()=>{
-  // darkened render for the backdrop
-  const d=document.createElement('canvas');d.width=o.img.naturalWidth;d.height=o.img.naturalHeight;
-  const dx=d.getContext('2d');dx.filter=`saturate(1.1) contrast(1.04) brightness(${o.cfg?.b??0.7})`;dx.drawImage(o.img,0,0);
-  o.dark=d;
-  // small buffer to sample the ORIGINAL pigment per packet
-  const sw=192,sh=Math.max(1,Math.round(192*o.img.naturalHeight/o.img.naturalWidth));
-  const s=document.createElement('canvas');s.width=sw;s.height=sh;
-  const sx=s.getContext('2d');sx.drawImage(o.img,0,0,sw,sh);
-  try{o.samp=sx.getImageData(0,0,sw,sh).data;o.sw=sw;o.sh=sh;}catch(e){}
-  o.ready=true;
-};o.img.src='art/'+o.f+'?v=2';});
+// ── pre-rendered sprites (drawn with drawImage on the GPU; no per-frame gradients/shadows) ──
+function glow(rgb,sz){const c=document.createElement('canvas');c.width=c.height=sz;const x=c.getContext('2d');
+  const g=x.createRadialGradient(sz/2,sz/2,0,sz/2,sz/2,sz/2);
+  g.addColorStop(0,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},1)`);g.addColorStop(.4,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},.5)`);
+  g.addColorStop(1,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);x.fillStyle=g;x.fillRect(0,0,sz,sz);return c;}
+const PAL=[[255,250,235],[247,214,150],[230,170,120],[210,150,170],[150,200,210],[140,175,230],[120,140,210],[200,210,235]];
+const SPR=PAL.map(c=>glow(c,48)),CORE=glow([255,251,240],36),HALO=glow([243,217,160],120);
+function nearest(rgb){let bi=0,bd=1e9;for(let i=0;i<PAL.length;i++){const d=(PAL[i][0]-rgb[0])**2+(PAL[i][1]-rgb[1])**2+(PAL[i][2]-rgb[2])**2;if(d<bd){bd=d;bi=i}}return bi;}
+
+// ── paintings: darken once on load + tiny sample buffer for spawn-time tint ──
+const arts=ART.map(m=>({...m,img:new Image(),ready:0,dark:null,samp:null,sw:0,sh:0}));
+arts.forEach(o=>{o.img.onload=()=>{const d=document.createElement('canvas');d.width=o.img.naturalWidth;d.height=o.img.naturalHeight;
+  const dx=d.getContext('2d');dx.filter=`saturate(1.1) contrast(1.04) brightness(${o.cfg.b})`;dx.drawImage(o.img,0,0);o.dark=d;
+  const sw=120,sh=Math.max(1,Math.round(120*o.img.naturalHeight/o.img.naturalWidth));
+  const s=document.createElement('canvas');s.width=sw;s.height=sh;s.getContext('2d').drawImage(o.img,0,0,sw,sh);
+  try{o.samp=s.getContext('2d').getImageData(0,0,sw,sh).data;o.sw=sw;o.sh=sh;}catch(e){}o.ready=1;};
+  o.img.src='art/'+o.f+'?v=3';});
+function sample(x,y){const a=arts[cur];if(!a||!a.samp)return[255,245,220];
+  const sx=Math.max(0,Math.min(a.sw-1,x/W*a.sw|0)),sy=Math.max(0,Math.min(a.sh-1,y/H*a.sh|0)),i=(sy*a.sw+sx)*4;
+  return[a.samp[i],a.samp[i+1],a.samp[i+2]];}
 
 let cur=0,nxt=1,fade=1,lastSwap=performance.now();
-function painting(now){
-  const a=arts[cur];if(!a||!a.ready)return;
-  // Ken Burns
-  const k=((now/1000)%40)/40, sc=1.0+0.07*(0.5-0.5*Math.cos(k*Math.PI*2));
-  const drawCover=(cv,al)=>{
-    if(al<=0||!cv)return;X.save();X.globalAlpha=al;
-    const iw=cv.width,ih=cv.height,s=Math.max(W/iw,H/ih)*sc,w=iw*s,h=ih*s;
-    const ox=(W-w)/2+Math.sin(now/9000)*W*0.012, oy=(H-h)/2+Math.cos(now/11000)*H*0.012;
-    X.drawImage(cv,ox,oy,w,h);X.restore();
-  };
-  drawCover(a.dark,1);
-  if(fade<1&&arts[nxt]&&arts[nxt].ready) drawCover(arts[nxt].dark,1-smooth(fade));
-  X.save();X.globalAlpha=(a.cfg?.v??0.46);X.drawImage(VIG,0,0);X.restore();
-}
 function smooth(t){return t*t*(3-2*t);}
-// cross-fade scheduler
-function cycle(now){
-  if(fade<1){fade=Math.min(1,fade+ (now-_l)/3000); if(fade>=1){cur=nxt;nxt=(nxt+1)%arts.length;}}
-  else if(now-lastSwap>40000){lastSwap=now;fade=0;}
-}
+function painting(now){const a=arts[cur];if(!a||!a.ready){X.fillStyle='#05060a';X.fillRect(0,0,W,H);return;}
+  const k=((now/1000)%44)/44,sc=1+0.06*(0.5-0.5*Math.cos(k*6.283));
+  const cover=(cv,al)=>{if(al<=0||!cv)return;X.globalAlpha=al;const s=Math.max(W/cv.width,H/cv.height)*sc,w=cv.width*s,h=cv.height*s;
+    X.drawImage(cv,(W-w)/2+Math.sin(now/9000)*W*0.01,(H-h)/2+Math.cos(now/11000)*H*0.01,w,h);X.globalAlpha=1;};
+  cover(a.dark,1);
+  if(fade<1&&arts[nxt]&&arts[nxt].ready)cover(arts[nxt].dark,1-smooth(fade));
+  X.globalAlpha=a.cfg.v;X.drawImage(VIG,0,0);X.globalAlpha=1;}
+function cycle(now){if(fade<1){fade=Math.min(1,fade+(now-_l)/3000);if(fade>=1){cur=nxt;nxt=(nxt+1)%arts.length;}}
+  else if(now-lastSwap>44000){lastSwap=now;fade=0;}}
 
-// ---- vignette + grain ----
-let VIG;function buildVignette(){VIG=document.createElement('canvas');VIG.width=W;VIG.height=H;const v=VIG.getContext('2d');
-  const g=v.createRadialGradient(W/2,H/2,Math.min(W,H)*0.30,W/2,H/2,Math.max(W,H)*0.74);
+let VIG;function buildVig(){VIG=document.createElement('canvas');VIG.width=W;VIG.height=H;const v=VIG.getContext('2d');
+  const g=v.createRadialGradient(W/2,H/2,Math.min(W,H)*0.32,W/2,H/2,Math.max(W,H)*0.75);
   g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,1)');v.fillStyle=g;v.fillRect(0,0,W,H);}
-let GR=document.createElement('canvas'),grReady=false;
-(function grain(){GR.width=160;GR.height=160;const g=GR.getContext('2d'),im=g.createImageData(160,160);
-  for(let i=0;i<im.data.length;i+=4){const n=Math.random()*255;im.data[i]=im.data[i+1]=im.data[i+2]=n;im.data[i+3]=14;}
-  g.putImageData(im,0,0);grReady=true;})();
+// grain: one pre-tiled full-screen canvas, drawn once per frame with a small offset
+let GRN;function buildGrain(){GRN=document.createElement('canvas');GRN.width=256;GRN.height=256;const g=GRN.getContext('2d'),im=g.createImageData(256,256);
+  for(let i=0;i<im.data.length;i+=4){const n=Math.random()*255;im.data[i]=im.data[i+1]=im.data[i+2]=n;im.data[i+3]=10;}g.putImageData(im,0,0);}
+buildGrain();
 
-// ---- bloom buffer ----
-let BL,BX;function sizeBloom(){BL=document.createElement('canvas');BL.width=Math.round(W/2);BL.height=Math.round(H/2);BX=BL.getContext('2d');}
-
-// ---- sampling pigment ----
-function sample(x,y){const a=arts[cur];if(!a||!a.samp)return[255,240,200];
-  const sx=Math.max(0,Math.min(a.sw-1,Math.floor(x/W*a.sw))),sy=Math.max(0,Math.min(a.sh-1,Math.floor(y/H*a.sh)));
-  const i=(sy*a.sw+sx)*4;return[a.samp[i],a.samp[i+1],a.samp[i+2]];}
-
-// ---- state + nodes ----
+// ── state + nodes ──
 let state={drives:[],edges:[],cloud:{},ts:''},nodes={},last={};
-function layout(){
-  nodes={};const src=state.drives.filter(d=>d.role==='source');
+function layout(){nodes={};const src=state.drives.filter(d=>d.role==='source');
   const vault=state.drives.filter(d=>d.role==='archive').sort((a,b)=>(b.total||0)-(a.total||0))[0];
-  const lx=W*0.155,vx=W*0.5,cx=W*0.845;
-  src.forEach((d,i)=>{const f=src.length>1?i/(src.length-1):0.5;nodes[d.name]={x:lx,y:H*(0.2+0.6*f),d,role:'source',pulse:last[d.name]?.pulse||0};});
-  if(vault)nodes.__vault={x:vx,y:H*0.5,d:vault,role:'vault',lab:'VAULT',pulse:last.__vault?.pulse||0};
-  nodes.__cloud={x:cx,y:H*0.5,d:state.cloud,role:'cloud',lab:'CLOUD',pulse:last.__cloud?.pulse||0};
-  last=nodes;
-}
-function bez(a,b,t){const mx=(a.x+b.x)/2,lift=-Math.sin(t*Math.PI)*Math.min(175*DPR,Math.abs(b.x-a.x)*0.30)*(CUR_CFG.arc||1);
-  const c1={x:mx,y:a.y+lift},c2={x:mx,y:b.y+lift},u=1-t;
-  return{x:u*u*u*a.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*b.x,
-         y:u*u*u*a.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*b.y};}
+  const lx=W*0.16,vx=W*0.5,cx=W*0.84;
+  src.forEach((d,i)=>{const f=src.length>1?i/(src.length-1):0.5;nodes[d.name]={x:lx,y:H*(0.22+0.56*f),d,role:'source',pulse:last[d.name]?.pulse||0};});
+  if(vault)nodes.__vault={x:vx,y:H*0.5,d:vault,role:'vault',pulse:last.__vault?.pulse||0};
+  nodes.__cloud={x:cx,y:H*0.5,d:state.cloud||{},role:'cloud',pulse:last.__cloud?.pulse||0};last=nodes;}
+function tgt(e){return e.to==='cloud'?nodes.__cloud:nodes.__vault;}
+function bez(a,b,t){const mx=(a.x+b.x)/2,lift=-Math.sin(t*Math.PI)*Math.min(150*DPR,Math.abs(b.x-a.x)*0.28)*(CFG.arc||1),u=1-t;
+  const c1={x:mx,y:a.y+lift},c2={x:mx,y:b.y+lift};
+  return{x:u*u*u*a.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*b.x,y:u*u*u*a.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*b.y};}
 
-// ---- packets ----
+// ── packets (sprite-based, capped, calm) ──
 let packs=[];
-function targetOf(e){return e.to==='cloud'?nodes.__cloud:nodes.__vault;}
-function spawn(dt,now){
-  // real transfers
-  state.edges.forEach(e=>{const a=nodes[e.from],b=targetOf(e);if(!a||!b)return;
-    const rate=e.kind==='footage'?Math.max(2.5,Math.min(16,(e.speed||4)/3)):2.2;
+function mk(a,b,kind,amb){const rgb=sample(a.x,a.y);
+  return{a:{x:a.x,y:a.y},b:{x:b.x,y:b.y},s:0,v:((amb?.14:.22)+Math.random()*.1)*(CFG.sp||1),
+    spr:SPR[nearest(rgb)],sz:(amb?7:12+Math.random()*7)*DPR,seed:Math.random()*99,amb};}
+function spawn(dt){
+  state.edges.forEach(e=>{const a=nodes[e.from],b=tgt(e);if(!a||!b)return;
+    const rate=e.kind==='footage'?Math.max(1.4,Math.min(7,(e.speed||4)/8)):1.2;
     if(Math.random()<rate*dt/1000)packs.push(mk(a,b,e.kind));});
-  // ambient drift so the painting always breathes
-  Object.values(nodes).forEach(n=>{if(n.role==='source'&&Math.random()<0.16*dt/1000)packs.push(mk(n,nodes.__vault,n.d.kind,true));});
-  if(packs.length>140)packs.splice(0,packs.length-140);
+  Object.values(nodes).forEach(n=>{if(n.role==='source'&&Math.random()<0.09*dt/1000)packs.push(mk(n,nodes.__vault,n.d.kind,1));});
+  if(packs.length>52)packs.splice(0,packs.length-52);
 }
-function mk(a,b,kind,amb){const sp=CUR_CFG.sp||1;return{a:{x:a.x,y:a.y},b:{x:b.x,y:b.y},s:0,
-  v:((amb?0.16:0.24)+Math.random()*0.16)*sp,kind,amb,
-  sz:(amb?1.1:1.8+Math.random()*1.6)*DPR,seed:Math.random()*99};}
-function drawPacks(dt,now){
-  // decay bloom
-  BX.globalCompositeOperation='destination-out';BX.fillStyle='rgba(0,0,0,0.07)';BX.fillRect(0,0,BL.width,BL.height);
-  BX.globalCompositeOperation='lighter';
-  X.globalCompositeOperation='lighter';
+function drawPacks(dt,now){X.globalCompositeOperation='lighter';
   packs=packs.filter(p=>p.s<1);
-  packs.forEach(p=>{p.s+=p.v*dt/1000;
-    const wob=Math.sin(now/350+p.seed)*(CUR_CFG.wob||6)*DPR;
-    const head=bez(p.a,p.b,Math.min(1,p.s));head.x+=Math.cos(p.seed)*wob*0.3;head.y+=wob;
-    const rgb=sample(head.x,head.y);
-    const foot=p.kind==='footage';
-    const core=foot?[255,247,224]:[224,240,255];
-    const tint=`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    // trail (ghosts) — length set by the painting
-    const ghosts= p.amb?5:(CUR_CFG.gh||12);
-    for(let g=ghosts;g>=1;g--){const gs=Math.max(0,p.s-g*0.012);if(gs<=0)continue;
-      const gp=bez(p.a,p.b,gs);const al=(1-g/ghosts)*(p.amb?0.16:0.5);const r=p.sz*(1-g/ghosts*0.6);
-      const rg=X.createRadialGradient(gp.x,gp.y,0,gp.x,gp.y,r*3.4);
-      rg.addColorStop(0,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${al})`);rg.addColorStop(1,'rgba(0,0,0,0)');
-      X.fillStyle=rg;X.beginPath();X.arc(gp.x,gp.y,r*3.4,0,7);X.fill();}
-    // nucleus
-    const ng=X.createRadialGradient(head.x,head.y,0,head.x,head.y,p.sz*5);
-    ng.addColorStop(0,`rgba(${core[0]},${core[1]},${core[2]},0.95)`);
-    ng.addColorStop(0.35,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.8)`);
-    ng.addColorStop(1,'rgba(0,0,0,0)');
-    X.fillStyle=ng;X.beginPath();X.arc(head.x,head.y,p.sz*5,0,7);X.fill();
-    // deposit bloom
-    const bx=head.x/2,by=head.y/2;const bg=BX.createRadialGradient(bx,by,0,bx,by,p.sz*6);
-    bg.addColorStop(0,`rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.5)`);bg.addColorStop(1,'rgba(0,0,0,0)');
-    BX.fillStyle=bg;BX.beginPath();BX.arc(bx,by,p.sz*6,0,7);BX.fill();
-    // arrival
-    if(p.s>=1){const tn=p.b;for(const k in nodes){if(Math.hypot(nodes[k].x-tn.x,nodes[k].y-tn.y)<4*DPR)nodes[k].pulse=1;}}
-  });
-  X.globalCompositeOperation='source-over';
-}
+  for(const p of packs){p.s+=p.v*dt/1000;
+    const wob=Math.sin(now/420+p.seed)*5*DPR;
+    // 3 trail stamps + head — all drawImage (GPU)
+    for(let g=3;g>=1;g--){const gs=p.s-g*0.05;if(gs<=0)continue;const q=bez(p.a,p.b,gs);
+      const r=p.sz*(1-g*0.18),al=(1-g/4)*(p.amb?.3:.6);X.globalAlpha=al;
+      X.drawImage(p.spr,q.x-r,q.y+wob*0.4-r,r*2,r*2);}
+    const h=bez(p.a,p.b,Math.min(1,p.s));h.y+=wob;
+    X.globalAlpha=p.amb?.45:.85;X.drawImage(p.spr,h.x-p.sz,h.y-p.sz,p.sz*2,p.sz*2);
+    const cr=p.sz*0.6;X.globalAlpha=p.amb?.4:.9;X.drawImage(CORE,h.x-cr,h.y-cr,cr*2,cr*2);
+    if(p.s>=1){for(const k in nodes)if(Math.hypot(nodes[k].x-p.b.x,nodes[k].y-p.b.y)<4*DPR)nodes[k].pulse=1;}
+  }
+  X.globalAlpha=1;X.globalCompositeOperation='source-over';}
 
-// ---- routes ----
-function routes(now){X.save();X.globalCompositeOperation='lighter';X.lineWidth=1.2*DPR;
-  const dash=18*DPR;X.setLineDash([7*DPR,11*DPR]);
-  state.edges.forEach(e=>{const a=nodes[e.from],b=targetOf(e);if(!a||!b)return;
-    X.lineDashOffset=-(now*0.06)%dash;X.strokeStyle='rgba(243,217,160,0.16)';
-    X.beginPath();for(let t=0;t<=1;t+=0.04){const p=bez(a,b,t);t?X.lineTo(p.x,p.y):X.moveTo(p.x,p.y);}X.stroke();});
+function routes(now){X.save();X.globalCompositeOperation='lighter';X.lineWidth=1*DPR;X.setLineDash([6*DPR,12*DPR]);
+  X.strokeStyle='rgba(243,217,160,0.12)';
+  for(const e of state.edges){const a=nodes[e.from],b=tgt(e);if(!a||!b)continue;X.lineDashOffset=-(now*0.05)%(18*DPR);
+    X.beginPath();for(let t=0;t<=1;t+=0.06){const p=bez(a,b,t);t?X.lineTo(p.x,p.y):X.moveTo(p.x,p.y);}X.stroke();}
   X.restore();X.setLineDash([]);}
 
-// ---- nodes + labels ----
-function star(n,now){const base=n.role==='source'?(activeName(n)?1:0.6):0.8;
-  const tw=base+0.18*Math.sin(now/700+n.x);const R=(n.role==='source'?15:20)*DPR*(1+n.pulse*0.7);
-  // halo
-  const rgb=sample(n.x,n.y);const hg=X.createRadialGradient(n.x,n.y,0,n.x,n.y,R*3.2);
-  hg.addColorStop(0,`rgba(243,217,160,${0.32*tw+n.pulse*0.4})`);hg.addColorStop(1,'rgba(0,0,0,0)');
-  X.save();X.globalCompositeOperation='lighter';X.fillStyle=hg;X.beginPath();X.arc(n.x,n.y,R*3.2,0,7);X.fill();X.restore();
-  // gilded ring
-  X.lineWidth=1.6*DPR;X.strokeStyle=`rgba(243,217,160,${0.7*tw})`;X.shadowBlur=12*DPR;X.shadowColor=GOLD;
-  X.beginPath();X.arc(n.x,n.y,R,0,7);X.stroke();X.shadowBlur=0;
-  X.fillStyle=`rgba(255,250,235,${0.9*tw})`;X.beginPath();X.arc(n.x,n.y,2.4*DPR,0,7);X.fill();
-  if(n.pulse>0)n.pulse*=0.93;
-}
-function activeName(n){return state.edges.some(e=>e.from===n.d?.name);}
-function label(n){const d=n.d||{};let L1,L2,L3,accent='#9fc6ff';
-  if(n.role==='source'){const foot=d.kind==='camera-sony';accent=foot?'#bfe9ff':'#ffe1a8';
-    L1=(d.label||'—');L2=d.name; const e=state.edges.find(x=>x.from===d.name);
-    L3=e?(e.kind==='footage'?`COPYING ${e.pct}% · ${e.speed} MB/s`:'organizing → vault'):(foot?`${d.clips||0} clips`:'idle');}
-  else if(n.role==='vault'){L1='VAULT';L2=d.name||'Archive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;accent='#cdb8ff';}
-  else{L1='CLOUD';L2='Google Drive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;accent='#a9f0cf';}
-  const tx=n.x+26*DPR;
-  X.save();X.textBaseline='middle';
-  X.font=`700 ${15*DPR}px Georgia,'Times New Roman',serif`;
-  const w1=X.measureText(L1).width;
-  X.font=`${11*DPR}px ui-monospace,monospace`;const w2=X.measureText(L2).width,w3=X.measureText(L3).width;
-  const pw=Math.max(w1,w2,w3)+18*DPR,ph=50*DPR,px=tx-9*DPR,py=n.y-ph/2;
-  X.fillStyle='rgba(8,9,16,0.46)';rr(px,py,pw,ph,8*DPR);X.fill();
-  X.shadowColor='#000';X.shadowBlur=6*DPR;
-  X.font=`700 ${15*DPR}px Georgia,serif`;X.fillStyle=GOLD;X.fillText(L1,tx,n.y-14*DPR);
-  X.font=`${11*DPR}px ui-monospace,monospace`;X.fillStyle='#e9f0ff';X.fillText(L2,tx,n.y+1*DPR);
-  X.fillStyle=accent;X.fillText(L3,tx,n.y+15*DPR);X.restore();
-}
+function star(n,now){const R=(n.role==='source'?15:20)*DPR*(1+n.pulse*0.6);
+  X.globalCompositeOperation='lighter';const hr=R*2.6*(1+n.pulse);
+  X.globalAlpha=0.5+n.pulse*0.4;X.drawImage(HALO,n.x-hr,n.y-hr,hr*2,hr*2);X.globalAlpha=1;X.globalCompositeOperation='source-over';
+  X.lineWidth=1.4*DPR;X.strokeStyle='rgba(243,217,160,0.8)';X.beginPath();X.arc(n.x,n.y,R,0,7);X.stroke();
+  X.fillStyle='rgba(255,250,235,0.9)';X.beginPath();X.arc(n.x,n.y,2.2*DPR,0,7);X.fill();
+  if(n.pulse>0.01)n.pulse*=0.92;else n.pulse=0;}
+function label(n){const d=n.d||{};let L1,L2,L3,ac='#9fc6ff';
+  if(n.role==='source'){const foot=d.kind==='camera-sony';ac=foot?'#bfe9ff':'#ffe1a8';L1=d.label||'—';L2=d.name||'';
+    const e=state.edges.find(x=>x.from===d.name);L3=e?(e.kind==='footage'?`COPYING ${e.pct}% · ${e.speed} MB/s`:'organizing → vault'):(foot?`${d.clips||0} clips`:'idle');}
+  else if(n.role==='vault'){L1='VAULT';L2=d.name||'Archive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;ac='#cdb8ff';}
+  else{L1='CLOUD';L2='Google Drive';L3=`${human(d.used)} · ${human((d.total||0)-(d.used||0))} free`;ac='#a9f0cf';}
+  const tx=n.x+24*DPR;X.textBaseline='middle';
+  X.font=`700 ${14*DPR}px Georgia,serif`;const w1=X.measureText(L1).width;
+  X.font=`${10.5*DPR}px ui-monospace,monospace`;const pw=Math.max(w1,X.measureText(L2).width,X.measureText(L3).width)+16*DPR;
+  X.fillStyle='rgba(8,9,16,0.42)';rr(tx-8*DPR,n.y-24*DPR,pw,48*DPR,7*DPR);X.fill();
+  X.shadowColor='#000';X.shadowBlur=5*DPR;
+  X.font=`700 ${14*DPR}px Georgia,serif`;X.fillStyle='#f3d9a0';X.fillText(L1,tx,n.y-13*DPR);
+  X.font=`${10.5*DPR}px ui-monospace,monospace`;X.fillStyle='#e9f0ff';X.fillText(L2,tx,n.y+1*DPR);
+  X.fillStyle=ac;X.fillText(L3,tx,n.y+14*DPR);X.shadowBlur=0;}
 function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.arcTo(x+w,y,x+w,y+h,r);X.arcTo(x+w,y+h,x,y+h,r);X.arcTo(x,y+h,x,y,r);X.arcTo(x,y,x+w,y,r);X.closePath();}
-
-// ---- main loop ----
-let _l=performance.now();
-function frame(now){const dt=Math.min(50,now-_l);CUR_CFG=arts[cur]?.cfg||DEF;
-  cycle(now);painting(now);
-  // bloom composite (dialed back so the painting reads through the light)
-  X.save();X.globalCompositeOperation='lighter';X.globalAlpha=0.55;X.drawImage(BL,0,0,W,H);X.restore();
-  routes(now);spawn(dt,now);drawPacks(dt,now);
-  Object.values(nodes).forEach(n=>star(n,now));Object.values(nodes).forEach(n=>label(n));
-  // grain + title
-  if(grReady){X.save();X.globalAlpha=0.5;const o=(now/50)%160;for(let gx=-160;gx<W;gx+=160)for(let gy=-160;gy<H;gy+=160)X.drawImage(GR,gx+o%160-160,gy);X.restore();}
-  title(now);
-  _l=now;requestAnimationFrame(frame);
-}
 function title(now){const a=((fade<1&&fade>0.5)?arts[nxt]:arts[cur])||arts[cur];if(!a)return;
-  X.save();X.textBaseline='alphabetic';X.shadowColor='#000';X.shadowBlur=10*DPR;
-  X.font=`italic 600 ${17*DPR}px Georgia,serif`;X.fillStyle='rgba(243,217,160,0.82)';
-  X.fillText(a.t,28*DPR,H-40*DPR);
-  X.font=`${11*DPR}px ui-monospace,monospace`;X.fillStyle='rgba(200,212,235,0.6)';
-  X.fillText(a.a,28*DPR,H-22*DPR);X.restore();}
+  X.shadowColor='#000';X.shadowBlur=9*DPR;X.textBaseline='alphabetic';
+  X.font=`italic 600 ${16*DPR}px Georgia,serif`;X.fillStyle='rgba(243,217,160,0.8)';X.fillText(a.t,26*DPR,H-38*DPR);
+  X.font=`${10.5*DPR}px ui-monospace,monospace`;X.fillStyle='rgba(200,212,235,0.55)';X.fillText(a.a,26*DPR,H-21*DPR);X.shadowBlur=0;}
 
+let _l=performance.now();
+function frame(now){const dt=Math.min(50,now-_l);CFG=arts[cur]?.cfg||DEF;
+  cycle(now);painting(now);routes(now);spawn(dt);drawPacks(dt,now);
+  for(const k in nodes)star(nodes[k],now);for(const k in nodes)label(nodes[k]);
+  X.globalAlpha=0.5;const o=(now/60)%256;X.drawImage(GRN,o-256,0);X.drawImage(GRN,o,0);X.globalAlpha=1;
+  title(now);_l=now;requestAnimationFrame(frame);}
 size();addEventListener('resize',()=>{clearTimeout(window._rt);window._rt=setTimeout(size,150);});
 requestAnimationFrame(frame);
 
-// ---- live feed ----
-// generic demo feed (used when no live state.json — keeps the public/standalone build private)
+// ── live feed (with private-safe demo fallback) ──
 const DEMO={drives:[
   {name:'CAM-A',role:'source',kind:'camera-sony',label:'F-01',clips:42,total:1e12,used:5.2e11},
   {name:'CAM-B',role:'source',kind:'camera-sony',label:'F-02',clips:17,total:2.5e11,used:8e10},
   {name:'DRIVE-1',role:'source',kind:'data',label:'D-01',total:5e11,used:4.6e11},
-  {name:'ARCHIVE',role:'archive',kind:'archive',total:1.6e13,used:8.2e11},
-],cloud:{name:'Cloud',used:1.7e12,total:2.2e13}};
-function demoTick(){const e=[
-  {from:'CAM-A',to:'cloud',kind:'footage',pct:(performance.now()/300%100|0),speed:38+(Math.sin(performance.now()/2000)*18|0)},
-  {from:'CAM-A',to:'vault',kind:'footage',pct:(performance.now()/280%100|0),speed:52+(Math.cos(performance.now()/1700)*14|0)},
-  {from:'DRIVE-1',to:'vault',kind:'data',pct:0,speed:0}];
-  return {...DEMO,edges:e,ts:'demo',totalSpeed:e.reduce((s,x)=>s+x.speed,0)};}
+  {name:'ARCHIVE',role:'archive',kind:'archive',total:1.6e13,used:8.2e11}],cloud:{name:'Cloud',used:1.7e12,total:2.2e13}};
+function demoTick(){const e=[{from:'CAM-A',to:'cloud',kind:'footage',pct:performance.now()/300%100|0,speed:38+(Math.sin(performance.now()/2000)*18|0)},
+  {from:'CAM-A',to:'vault',kind:'footage',pct:performance.now()/280%100|0,speed:52+(Math.cos(performance.now()/1700)*14|0)},
+  {from:'DRIVE-1',to:'vault',kind:'data',pct:0,speed:0}];return{...DEMO,edges:e,ts:'demo',totalSpeed:e.reduce((s,x)=>s+x.speed,0)};}
 async function poll(){try{const r=await fetch('state.json?'+Date.now());if(!r.ok)throw 0;state=await r.json();
-  document.getElementById('conn').textContent='● LIVE · '+state.ts+' · '+(state.totalSpeed||0)+' MB/s';layout();
-}catch(e){state=demoTick();layout();
-  document.getElementById('conn').textContent='◆ DEMO · '+(state.totalSpeed||0)+' MB/s';}}
-poll();setInterval(poll,1500);
+  conn.textContent='● LIVE · '+state.ts+' · '+(state.totalSpeed||0)+' MB/s';layout();}
+  catch(e){state=demoTick();layout();conn.textContent='◆ DEMO · '+(state.totalSpeed||0)+' MB/s';}}
+const conn=document.getElementById('conn');poll();setInterval(poll,2000);
 addEventListener('click',()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();});
 </script>
 </body>
